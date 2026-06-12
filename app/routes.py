@@ -21,24 +21,31 @@ from app.dijkstra import shortest_path
 
 router = APIRouter()
 
-# Add nodes
+
+# Add node
 @router.post("/nodes")
 def add_node(
     node: NodeCreate,
     db: Session = Depends(get_db)
 ):
 
+    if not node.name or not node.name.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Name missing or duplicate"
+        )
+
     existing = db.query(Node).filter(
-        Node.name ==node.name
+        Node.name == node.name
     ).first()
 
     if existing:
         raise HTTPException(
             status_code=400,
-            detail="Node already exists"
+            detail="Name missing or duplicate"
         )
 
-    new_node =Node(
+    new_node = Node(
         name=node.name
     )
 
@@ -48,27 +55,59 @@ def add_node(
 
     return new_node
 
-# add edges
+
+# Get nodes
+@router.get("/nodes")
+def get_nodes(
+    db: Session = Depends(get_db)
+):
+    return db.query(Node).all()
+
+
+# Add edge
 @router.post("/edges")
 def add_edge(
     edge: EdgeCreate,
-    db: Session =Depends(get_db)
+    db: Session = Depends(get_db)
 ):
 
+    if not edge.source or not edge.destination:
+        raise HTTPException(
+            status_code=400,
+            detail="Source/destination missing"
+        )
+
+    if edge.latency <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Latency must be greater than 0"
+        )
+
     source = db.query(Node).filter(
-        Node.name== edge.source
+        Node.name == edge.source
     ).first()
 
     destination = db.query(Node).filter(
-        Node.name==edge.destination
+        Node.name == edge.destination
     ).first()
 
     if not source or not destination:
-
         raise HTTPException(
-            status_code=404,
-            detail="Node not found"
+            status_code=400,
+            detail="Source or destination node not found"
         )
+
+    existing_edge = db.query(Edge).filter(
+        Edge.source_id == source.id,
+        Edge.destination_id == destination.id
+    ).first()
+
+    if existing_edge:
+        raise HTTPException(
+            status_code=400,
+            detail="Edge already exists"
+        )
+
     new_edge = Edge(
         source_id=source.id,
         destination_id=destination.id,
@@ -86,18 +125,61 @@ def add_edge(
         "latency": edge.latency
     }
 
-# shortest route
+
+# Get edges
+@router.get("/edges")
+def get_edges(
+    db: Session = Depends(get_db)
+):
+
+    edges = db.query(Edge).all()
+
+    result = []
+
+    for edge in edges:
+
+        source = db.query(Node).filter(
+            Node.id == edge.source_id
+        ).first()
+
+        destination = db.query(Node).filter(
+            Node.id == edge.destination_id
+        ).first()
+
+        result.append({
+            "id": edge.id,
+            "source": source.name,
+            "destination": destination.name,
+            "latency": edge.latency
+        })
+
+    return result
+
+
+# Shortest route
 @router.post("/routes/shortest")
 def find_route(
     request: RouteRequest,
     db: Session = Depends(get_db)
 ):
 
+    source_node = db.query(Node).filter(
+        Node.name == request.source
+    ).first()
+
+    destination_node = db.query(Node).filter(
+        Node.name == request.destination
+    ).first()
+
+    if not source_node or not destination_node:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or non-existent nodes"
+        )
+
     all_edges = []
 
-    edge_rows = db.query(
-        Edge
-    ).all()
+    edge_rows = db.query(Edge).all()
 
     for edge in edge_rows:
 
@@ -126,19 +208,15 @@ def find_route(
     )
 
     if not result:
-
-        raise HTTPException(
-            status_code=404,
-            detail="No path found"
-        )
+        return {
+            "error": f"No path exists between {request.source} and {request.destination}"
+        }
 
     history = RouteHistory(
         source=request.source,
         destination=request.destination,
         total_latency=result["total_latency"],
-        path=json.dumps(
-            result["path"]
-        )
+        path=json.dumps(result["path"])
     )
 
     db.add(history)
@@ -146,17 +224,14 @@ def find_route(
 
     return result
 
-# route history
-import json
 
+# Route history
 @router.get("/routes/history")
 def get_history(
     db: Session = Depends(get_db)
 ):
 
-    history = db.query(
-        RouteHistory
-    ).all()
+    history = db.query(RouteHistory).all()
 
     result = []
 
@@ -172,3 +247,51 @@ def get_history(
         })
 
     return result
+
+
+# Delete node
+@router.delete("/nodes/{node_id}")
+def delete_node(
+    node_id: int,
+    db: Session = Depends(get_db)
+):
+    node = db.query(Node).filter(
+        Node.id == node_id
+    ).first()
+
+    if not node:
+        raise HTTPException(
+            status_code=404,
+            detail="Node not found"
+        )
+
+    db.delete(node)
+    db.commit()
+
+    return {
+        "message": "Node deleted"
+    }
+
+
+# Delete edge
+@router.delete("/edges/{edge_id}")
+def delete_edge(
+    edge_id: int,
+    db: Session = Depends(get_db)
+):
+    edge = db.query(Edge).filter(
+        Edge.id == edge_id
+    ).first()
+
+    if not edge:
+        raise HTTPException(
+            status_code=404,
+            detail="Edge not found"
+        )
+
+    db.delete(edge)
+    db.commit()
+
+    return {
+        "message": "Edge deleted"
+    }
