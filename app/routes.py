@@ -208,9 +208,10 @@ def find_route(
     )
 
     if not result:
-        return {
-            "error": f"No path exists between {request.source} and {request.destination}"
-        }
+        raise HTTPException(
+           status_code=404,
+           detail=f"No path exists between {request.source} and {request.destination}"
+        )
 
     history = RouteHistory(
         source=request.source,
