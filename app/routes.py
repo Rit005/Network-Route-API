@@ -143,6 +143,8 @@ def find_route(
     return result
 
 # route history
+import json
+
 @router.get("/routes/history")
 def get_history(
     db: Session = Depends(get_db)
@@ -152,4 +154,17 @@ def get_history(
         RouteHistory
     ).all()
 
-    return history
+    result = []
+
+    for item in history:
+
+        result.append({
+            "id": item.id,
+            "source": item.source,
+            "destination": item.destination,
+            "total_latency": item.total_latency,
+            "path": json.loads(item.path),
+            "created_at": item.created_at
+        })
+
+    return result
