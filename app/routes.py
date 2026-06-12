@@ -77,9 +77,13 @@ def add_edge(
 
     db.add(new_edge)
     db.commit()
+    db.refresh(new_edge)
 
     return {
-        "message": "Edge added"
+        "id": new_edge.id,
+        "source": edge.source,
+        "destination": edge.destination,
+        "latency": edge.latency
     }
 
 # shortest route
